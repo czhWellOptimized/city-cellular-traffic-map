@@ -69,12 +69,13 @@ def generate_graph_seq2seq_io_data(
 def generate_train_val_test(args):
     df = pd.read_hdf(args.traffic_df_filename) # 对于h5文件应该采用该方法直接简单
     # 0 is the latest observed sample.
+    time_slice = args.time_slice
     x_offsets = np.sort(
         # np.concatenate(([-week_size + 1, -day_size + 1], np.arange(-11, 1, 1)))
-        np.concatenate((np.arange(-7, 1, 1),))
+        np.concatenate((np.arange(-(time_slice - 1), 1, 1),))
     )
     # Predict the next one hour
-    y_offsets = np.sort(np.arange(1, 9, 1))
+    y_offsets = np.sort(np.arange(1, time_slice + 1, 1))
     # x: (num_samples, input_length, num_nodes, input_dim)
     # y: (num_samples, output_length, num_nodes, output_dim)
     x, y = generate_graph_seq2seq_io_data(
@@ -105,16 +106,16 @@ def generate_train_val_test(args):
     x_test, y_test = x[-num_test:], y[-num_test:]
     # print(x_offsets.shape)
     # print(x_offsets.reshape(list(x_offsets.shape) + [1]))
-    for cat in ["train", "val", "test"]:
-        _x, _y = locals()["x_" + cat], locals()["y_" + cat]
-        print(cat, "x: ", _x.shape, "y:", _y.shape)
-        np.savez_compressed(
-            os.path.join(args.output_dir, "%s.npz" % cat),
-            x=_x,
-            y=_y,
-            x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]), # [-11,0]
-            y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]), # [1,12]
-        )
+    # for cat in ["train", "val", "test"]:
+    #     _x, _y = locals()["x_" + cat], locals()["y_" + cat]
+    #     print(cat, "x: ", _x.shape, "y:", _y.shape)
+    #     np.savez_compressed(
+    #         os.path.join(args.output_dir, "%s.npz" % cat),
+    #         x=_x,
+    #         y=_y,
+    #         x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]), # [-11,0]
+    #         y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]), # [1,12]
+    #     )
 
 
 def main(args):
@@ -132,6 +133,12 @@ if __name__ == "__main__":
         type=str,
         default="data/metr-la.h5",
         help="Raw traffic readings.",
+    )
+    parser.add_argument(
+        "--time_slice",
+        type=int,
+        default=8,
+        help="?hour -> ?hour"
     )
     args = parser.parse_args()
     main(args)

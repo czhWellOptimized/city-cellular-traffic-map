@@ -224,16 +224,19 @@ class NodePredictor(LightningModule):
         log.update(**unscaled_metrics(y_pred, y, self.data['feature_scaler'], 'val'))
         self.validation_step_outputs.append({'loss': loss, 'progress_bar': log, 'log': log})
         
-        
+        self.log('czh_all_client_validation_loss', log['val/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mse', log['val/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mae', log['val/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mape', log['val/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         
         return {'loss': loss, 'progress_bar': log, 'log': log}
 
     def on_validation_epoch_end(self):
         log = {}
-        for output in self.validation_step_outputs:
-            for k in output['log']:
+        for output in self.validation_step_outputs: # loss , progress_bar , log
+            for k in output['log']: # loss, num, mae, mape , mse
                 if k not in log:
-                    log[k] = 0
+                    log[k] = 0 
                 if k == 'num':
                     log[k] += output['log'][k]
                 else:
@@ -242,7 +245,7 @@ class NodePredictor(LightningModule):
             if k != 'num':
                 log[k] = log[k] / log['num']
         log.pop('num')
-        
+        # loss,mae,mape,mse
         logging.warning({'type':'validation','log_length':len(self.validation_step_outputs),'log': log})
         
         
@@ -269,6 +272,12 @@ class NodePredictor(LightningModule):
         log = {'test/loss': loss, 'num': y_pred.shape[0]}
         log.update(**unscaled_metrics(y_pred, y, self.data['feature_scaler'], 'test'))
         self.test_step_outputs.append({'loss': loss, 'progress_bar': log, 'log': log})
+        
+        self.log('czh_all_client_test_loss', log['test/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mse', log['test/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mae', log['test/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mape', log['test/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        
         return {'loss': loss, 'progress_bar': log, 'log': log}
 
     def on_test_epoch_end(self):
@@ -286,4 +295,7 @@ class NodePredictor(LightningModule):
                 log[k] = log[k] / log['num']
         log.pop('num')
         self.test_step_outputs.clear()
+        
+        logging.warning({'type':'test','log_length':len(self.test_step_outputs),'log': log})
+        
         return {'log': log, 'progress_bar': log}

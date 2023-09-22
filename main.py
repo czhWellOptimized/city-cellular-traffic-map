@@ -15,10 +15,10 @@ import logging # 这个是通用的python log库，和pytorch无关
 def main(args):
     torch.set_float32_matmul_precision('medium')
     seed_everything(args.seed)  # Global seed set to
-    tb_logger = TensorBoardLogger(save_dir="tb_logs/", name="standalone_module")
+    tb_logger = TensorBoardLogger(save_dir="tb_logs/", name = args.model_name) # 对不同的model分文件夹存储
 
     trainer = Trainer(
-        default_root_dir='artifacts',
+        default_root_dir='artifacts', # 如果存在logger，就使用logger中的路径
         deterministic=True,
         callbacks=[SaveNodeEncodings()],
         logger = tb_logger,
@@ -27,15 +27,10 @@ def main(args):
 
     if args.train:
         model = getattr(models, args.model_name)(args)
-        if args.restore_train_ckpt_path != '':
-            trainer = Trainer(
-                default_root_dir='artifacts',
-                deterministic=True,
-                callbacks=[SaveNodeEncodings()],
-                logger = tb_logger,
-                max_epochs=args.max_epochs
-            )
-        trainer.fit(model)
+        if args.restore_train_ckpt_path != '':     
+            trainer.fit(model, ckpt_path=args.restore_train_ckpt_path)
+        else:
+            trainer.fit(model)
 
 if __name__ == '__main__':
     os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'

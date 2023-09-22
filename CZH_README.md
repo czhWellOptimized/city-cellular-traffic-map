@@ -10,13 +10,17 @@
 
 
 需要生成可训练的数据集，先用于CNFGNN，
-
-
+177
+train x:  (106, 8, 2617, 2) y: (106, 8, 2617, 2)
+val x:  (36, 8, 2617, 2) y: (36, 8, 2617, 2)
+test x:  (35, 8, 2617, 2) y: (35, 8, 2617, 2)
+epoch 10 = 0.753 batch = 8
 
 需要cluster，并且得到每个cluster的代表节点，以及代表节点的数据
 
 
-
+一般来说，train step的指标都是总体上下降。但是会上下跳动。而epoch的指标一般来说是逐渐下降的，基本不会上下跳动。
+注意看pytorch lightning 的 train epoch time + validation epoch time =  epoch time
 
 
 

@@ -80,7 +80,7 @@ class FedMTLNodePredictorClient(nn.Module):
             self.base_model.load_state_dict(state_dict_list[0])
         neighbor_weight_list = weight_list[1:]
         neighbor_flattened_params_list = [self._get_flattened_model_params(x.items()).to(self.device) for x in state_dict_list[1:]] # [(..,..,.,),(..,..,..,),...(..,..,..,)]
-        self.train()
+        self.train() # 将模型设置为训练模式
         with torch.enable_grad():
             for epoch_i in range(self.sync_every_n_epoch):
                 num_samples = 0
@@ -99,6 +99,7 @@ class FedMTLNodePredictorClient(nn.Module):
 
                     # Laplacian regularization: \sum_{j!=i} a_{ij} * || W_j - W_i ||_2^2
                     mtl_loss = 0
+                    # 多任务学习设置中鼓励模型参数之间的一致性,Frobenius范数用于衡量矩阵之间的差异，所以希望和邻居节点之间的差距尽可能的小
                     self_flattend_params = self._get_flattened_model_params(self.base_model.named_parameters())
                     for weight_j, flattened_params_j in zip(neighbor_weight_list, neighbor_flattened_params_list):
                         mtl_loss += (weight_j * (self_flattend_params - flattened_params_j).norm('fro'))
@@ -341,7 +342,7 @@ class FedMTLNodePredictor(LightningModule):
         self.lists_of_neighbors = defaultdict(list)
         for eid, (s, t) in enumerate(edge_index.transpose()):
             if s != t:
-                self.lists_of_neighbors[s].append((edge_attr[eid].item(), t))
+                self.lists_of_neighbors[s].append((edge_attr[eid].item(), t)) # start -> weight,destination
                 # 为什么不用给t的邻居加上s？
 
     def _get_copied_ith_model(self, idx):
@@ -491,6 +492,12 @@ class FedMTLNodePredictor(LightningModule):
         # 2. aggregate
         log = self.aggregate_local_logs([x['log'] for x in local_val_results])
         self.validation_step_outputs.append({'progress_bar': log, 'log': log})
+        
+        self.log('czh_all_client_validation_loss', log['val/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mse', log['val/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mae', log['val/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_mape', log['val/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True)
+        
         return {'progress_bar': log, 'log': log}
 
     def on_validation_epoch_end(self):
@@ -526,6 +533,12 @@ class FedMTLNodePredictor(LightningModule):
         # 2. aggregate
         log = self.aggregate_local_logs([x['log'] for x in local_val_results])
         self.test_step_outputs.append({'progress_bar': log, 'log': log})
+        
+        self.log('czh_all_client_test_loss', log['test/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mse', log['test/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mae', log['test/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_mape', log['test/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        
         return {'progress_bar': log, 'log': log}
 
     def test_epoch_end(self):
