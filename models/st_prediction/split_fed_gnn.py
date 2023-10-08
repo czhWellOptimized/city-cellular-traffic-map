@@ -85,8 +85,8 @@ class SplitFedNodePredictorClient(nn.Module):
                     data = dict(
                         x=x, x_attr=x_attr, y=y, y_attr=y_attr
                     )
-                    y_pred = self(data, server_graph_encoding) # 调用 forward(self, x, server_graph_encoding)  B x T x N x output_size
-                    loss = nn.MSELoss()(y_pred, y) # B x T x N x output_size 
+                    y_pred = self(data, server_graph_encoding) # 调用 forward(self, x, server_graph_encoding)  B x T x N(i) x output_size
+                    loss = nn.MSELoss()(y_pred, y) # B x T x N(i) x output_size 
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
@@ -230,7 +230,7 @@ class SplitFedNodePredictor(LightningModule):
         self.data = data
         # Each node (client) has its own model and optimizer
         # Assigning data, model and optimizer for each client
-        num_clients = data['train']['x'].shape[2] # 23974 * 12 * 207 * 1         
+        num_clients = data['train']['x'].shape[2] # 23974 * 12 * 207 * 1      ，这里需要做聚类，改成 num_clusters   
         # num_clients = 1 DEBUG用
         input_size = self.data['train']['x'].shape[-1] + self.data['train']['x_attr'].shape[-1] # 2
         output_size = self.data['train']['y'].shape[-1] # 1
@@ -239,7 +239,7 @@ class SplitFedNodePredictor(LightningModule):
         for client_i in range(num_clients):
             client_datasets = {}
             for name in ['train', 'val', 'test']:
-                client_datasets[name] = TensorDataset(
+                client_datasets[name] = TensorDataset( # B T N F
                     data[name]['x'][:, :, client_i:client_i+1, :],
                     data[name]['y'][:, :, client_i:client_i+1, :],
                     data[name]['x_attr'][:, :, client_i:client_i+1, :],
@@ -313,7 +313,7 @@ class SplitFedNodePredictor(LightningModule):
                     data = dict(
                         x=x, x_attr=x_attr, y=y, y_attr=y_attr
                     )
-                    h_encode = self.base_model.forward_encoder(data) # Layer x (B x N) x hidden_size
+                    h_encode = self.base_model.forward_encoder(data) # Layer x (B x N) x hidden_size ，此处N=全部节点
                     batch_num, node_num = data['x'].shape[0], data['x'].shape[2]  # B , N
                     # logging.warning({'batch_num': batch_num, 'node_num': node_num})  {'batch_num': 48, 'node_num': 207}
                     #                                     layer          B         N            hidden_size
@@ -343,7 +343,7 @@ class SplitFedNodePredictor(LightningModule):
         for client_params in self.client_params_list:
             client_params.update(start_global_step=global_step)
         # update server_graph_encoding
-        updated_graph_encoding = torch.cat(updated_graph_encoding, dim=1) # N x B x L x hidden_size
+        updated_graph_encoding = torch.cat(updated_graph_encoding, dim=1) # N x B x L x node_output_size(hidden_size)
         sel_client_i = 0
         for client_i, client_params in enumerate(self.client_params_list):
             if 'selected' in self.data['train']:
@@ -383,7 +383,7 @@ class SplitFedNodePredictor(LightningModule):
                 # B : batch_num   48 
                 # L :   1     num_layers
                 # hidden_size : 特征此处为64 hidden_size
-                # logging.warning('graph_encoding : %s',str(graph_encoding.shape))
+                logging.warning('graph_encoding : %s',str(graph_encoding.shape)) # torch.Size([2617, 36, 1, 64])
                 graph_encoding = self.gcn(
                     Data(x=graph_encoding, 
                     edge_index=self.data[name]['edge_index'].to(graph_encoding.device), 
@@ -491,7 +491,7 @@ class SplitFedNodePredictor(LightningModule):
     def aggregate_local_train_state_dicts(self, local_train_state_dicts):
         raise NotImplementedError()
 
-    def aggregate_local_logs(self, local_logs, selected=None):
+    def aggregate_local_logs(self, local_logs, selected=None): # 可以通过修改num_samples的方式，不修改此处
         agg_log = deepcopy(local_logs[0])
         if selected is not None:
             agg_log_t = deepcopy(local_logs[0])
@@ -640,7 +640,7 @@ class SplitFedAvgNodePredictor(SplitFedNodePredictor):
     def __init__(self, hparams, *args, **kwargs):
         super().__init__(hparams, *args, **kwargs)
 
-    def aggregate_local_train_state_dicts(self, local_train_state_dicts):
+    def aggregate_local_train_state_dicts(self, local_train_state_dicts): # TODO
         agg_state_dict = {}
         for k in local_train_state_dicts[0]:
             agg_state_dict[k] = 0

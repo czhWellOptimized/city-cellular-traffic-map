@@ -261,20 +261,20 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
             out_hidden, _ = self.decoder(y_input, h_encode)
             out = self.out_net(out_hidden)
             out = out.view(out.shape[0], batch_num, node_num, out.shape[-1]).permute(1, 0, 2, 3)
-        else: # use_curriculum_learning
-            last_input = x_input[-1:]
-            last_hidden = h_encode # gru_num_layersx(Bx1)X(hidden_size*2)
+        else: # use_curriculum_learning，有时候来自真值，有时候来自预测值
+            last_input = x_input[-1:] # 1 x (BxN) x F
+            last_hidden = h_encode # gru_num_layers x (BxN) X (hidden_size*2)
             step_num = y_attr.shape[1] # T
             out_steps = [] 
             y_input = y.permute(1, 0, 2, 3).flatten(1, 2) # T x (B x N) x F
             y_attr_input = y_attr.permute(1, 0, 2, 3).flatten(1, 2)  # Tx(BxN)xF
             for t in range(step_num):
-                # Lx(BxN)x(2*hidden_size)  layerx(BxN)x(2*hidden_size)   1x(BxN)xF ,  gru_num_layersx(BxN)X(hidden_size*2)
+                # Lx(BxN)x(2*hidden_size)  Lx(BxN)x(2*hidden_size)   1x(BxN)xF ,  gru_num_layersx(BxN)X(hidden_size*2)
                 out_hidden, last_hidden = self.decoder(last_input, last_hidden)  # 可以看到，此处last_input的feature_size 并不影响结果的维度。
                 out = self.out_net(out_hidden) # Lx(BxN)xoutput_size
                 out_steps.append(out)
-                last_input_from_output = torch.cat((out, y_attr_input[t:t+1]), dim=-1) # 这里的很奇怪。 Lx(BxN)x2
-                last_input_from_gt = torch.cat((y_input[t:t+1], y_attr_input[t:t+1]), dim=-1) # Lx(BxN)x2
+                last_input_from_output = torch.cat((out, y_attr_input[t:t+1]), dim=-1) # 这里是要求laryer == 1，才能用dim， L(1)x(BxN)x2
+                last_input_from_gt = torch.cat((y_input[t:t+1], y_attr_input[t:t+1]), dim=-1) # 1x(BxN)x2
                 if self.training:
                     p_gt = self._compute_sampling_threshold(batches_seen)
                     p = torch.rand(1).item()
