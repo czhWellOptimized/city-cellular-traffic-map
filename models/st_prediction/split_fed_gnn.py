@@ -74,7 +74,7 @@ class SplitFedNodePredictorClient(nn.Module):
                 num_samples = 0
                 epoch_log = defaultdict(lambda : 0.0)
                 for batch in self.train_dataloader:
-                    x, y, x_attr, y_attr, server_graph_encoding = batch
+                    x, y, x_attr, y_attr, server_graph_encoding = batch # B 1 L H  ，应该修改成 B Ni L H 
                     # after : Sequence_length（batch_size） x 1 x gru_num_layers x hidden_size ，但是由于分batch了，所以sequence_length 此时变成batch_size
                     server_graph_encoding = server_graph_encoding.permute(1, 0, 2, 3) # 1 x batch_size x gru_num_layers x hidden_size
                     x = x.to(self.device) if (x is not None) else None
@@ -85,8 +85,8 @@ class SplitFedNodePredictorClient(nn.Module):
                     data = dict(
                         x=x, x_attr=x_attr, y=y, y_attr=y_attr
                     )
-                    y_pred = self(data, server_graph_encoding) # 调用 forward(self, x, server_graph_encoding)  B x T x N(i) x output_size
-                    loss = nn.MSELoss()(y_pred, y) # B x T x N(i) x output_size 
+                    y_pred = self(data, server_graph_encoding) # 调用 forward(self, x, server_graph_encoding)  B x T x Ni x output_size
+                    loss = nn.MSELoss()(y_pred, y) # B x T x Ni x output_size 
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
@@ -245,7 +245,7 @@ class SplitFedNodePredictor(LightningModule):
                     data[name]['x_attr'][:, :, client_i:client_i+1, :],
                     data[name]['y_attr'][:, :, client_i:client_i+1, :],
                     torch.zeros(1, data[name]['x'].shape[0], self.hparams.gru_num_layers, self.hparams.hidden_size).float().permute(1, 0, 2, 3) # default_server_graph_encoding
-                    # after : B x 1 x gru_num_layers x hidden_size
+                    # after : B x 1 x gru_num_layers x hidden_size ，需要改成 B Ni L H
                 )
             client_params = {}
             client_params.update(
@@ -295,7 +295,7 @@ class SplitFedNodePredictor(LightningModule):
         with torch.enable_grad():
             self.base_model.train()
             self.gcn.train()
-            for epoch_i in range(self.hparams.server_epoch + 1):
+            for epoch_i in range(self.hparams.server_epoch + 1): 
                 updated_graph_encoding = [] # 其实只装一个元素
                 if epoch_i == self.hparams.server_epoch:
                     server_train_dataloader = DataLoader(self.server_datasets['train'], batch_size=self.hparams.server_batch_size, shuffle=False)

@@ -194,7 +194,7 @@ class SplitGNNNodePredictor(LightningModule):
         # Each node (client) has its own model and optimizer
         # Assigning data, model and optimizer for each client
         self.clients = []
-        num_clients = data['train']['x'].shape[2]
+        num_clients = data['train']['x'].shape[2] # B T N F 
         input_size = self.data['train']['x'].shape[-1] + self.data['train']['x_attr'].shape[-1]
         output_size = self.data['train']['y'].shape[-1]
         
