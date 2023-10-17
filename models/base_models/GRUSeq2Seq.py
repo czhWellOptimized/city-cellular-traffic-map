@@ -253,8 +253,9 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
             ) # N x B x L x F
         # graph_encoding = 1 x batch_size x gru_num_layers x hidden_size
         graph_encoding = graph_encoding.permute(2, 1, 0, 3).flatten(1, 2) # gru_num_layers x (B x Ni) x hidden_size
+        # logging.warning(str(graph_encoding))
         h_encode = torch.cat([h_encode, graph_encoding], dim=-1)  # gru_num_layers x (BxNi) X (hidden_size *2)
-
+        # logging.warning(str(h_encode))
         if self.training and (not self.use_curriculum_learning):
             y_input = torch.cat((y, y_attr), dim=-1).permute(1, 0, 2, 3).flatten(1, 2) # T x (B x N) x F
             y_input = torch.cat((x_input[-1:], y_input[:-1]), dim=0) 
@@ -263,6 +264,7 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
             out = out.view(out.shape[0], batch_num, node_num, out.shape[-1]).permute(1, 0, 2, 3)
         else: # use_curriculum_learning，有时候来自真值，有时候来自预测值
             last_input = x_input[-1:] # 1 x (BxNi) x F
+            # logging.warning(str(last_input))
             last_hidden = h_encode # gru_num_layers x (BxNi) X (hidden_size*2)
             step_num = y_attr.shape[1] # T
             out_steps = [] 
@@ -271,7 +273,9 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
             for t in range(step_num):
                 # Lx(BxNi)x(2*hidden_size)  Lx(BxNi)x(2*hidden_size)   1x(BxNi)xF ,  gru_num_layersx(BxNi)X(hidden_size*2)
                 out_hidden, last_hidden = self.decoder(last_input, last_hidden)  # 可以看到，此处last_input的feature_size 并不影响结果的维度。
+                
                 out = self.out_net(out_hidden) # Lx(BxNi)xoutput_size
+                
                 out_steps.append(out)
                 last_input_from_output = torch.cat((out, y_attr_input[t:t+1]), dim=-1) # 这里是要求laryer == 1，才能用dim， L(1)x(BxNi)x2
                 last_input_from_gt = torch.cat((y_input[t:t+1], y_attr_input[t:t+1]), dim=-1) # 1x(BxNi)x2
@@ -285,7 +289,7 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
                 else:
                     last_input = last_input_from_output
             out = torch.cat(out_steps, dim=0) # Tx(BxN)xoutput_size
-            out = out.view(out.shape[0], batch_num, node_num, out.shape[-1]).permute(1, 0, 2, 3) # B x T x Ni x output_size
+            out = out.view(out.shape[0], batch_num, node_num, out.shape[-1]).permute(1, 0, 2, 3) # B x T x Ni x output_size 
         if type(data) is Batch:
             out = out.squeeze(0).permute(1, 0, 2)
         if return_encoding:
@@ -295,6 +299,7 @@ class GRUSeq2SeqWithGraphNet(GRUSeq2Seq):
     #                                                              1 x batch_size x gru_num_layers x hidden_size
     def forward(self, data, batches_seen, return_encoding=False, server_graph_encoding=None):
         h_encode = self.forward_encoder(data) # Layer x (B x N) x hidden_size
+        # logging.warning(str(h_encode))
         return self.forward_decoder(data, h_encode, batches_seen, return_encoding, server_graph_encoding)
 
     @staticmethod

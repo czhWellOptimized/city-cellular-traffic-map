@@ -104,18 +104,18 @@ def generate_train_val_test(args):
     )
     # test
     x_test, y_test = x[-num_test:], y[-num_test:]
-    # print(x_offsets.shape)
-    # print(x_offsets.reshape(list(x_offsets.shape) + [1]))
-    # for cat in ["train", "val", "test"]:
-    #     _x, _y = locals()["x_" + cat], locals()["y_" + cat]
-    #     print(cat, "x: ", _x.shape, "y:", _y.shape)
-    #     np.savez_compressed(
-    #         os.path.join(args.output_dir, "%s.npz" % cat),
-    #         x=_x,
-    #         y=_y,
-    #         x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]), # [-11,0]
-    #         y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]), # [1,12]
-    #     )
+    print(x_offsets.shape)
+    print(x_offsets.reshape(list(x_offsets.shape) + [1]))
+    for cat in ["train", "val", "test"]:
+        _x, _y = locals()["x_" + cat], locals()["y_" + cat]
+        print(cat, "x: ", _x.shape, "y:", _y.shape)
+        np.savez_compressed(
+            os.path.join(args.output_dir, "%s.npz" % cat),
+            x=_x,
+            y=_y,
+            x_offsets=x_offsets.reshape(list(x_offsets.shape) + [1]), # [-11,0]
+            y_offsets=y_offsets.reshape(list(y_offsets.shape) + [1]), # [1,12]
+        )
 
 
 def main(args):
@@ -126,12 +126,12 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--output_dir", type=str, default="data/", help="Output directory."
+        "--output_dir", type=str, default="data/traffic/data/METR-LA/", help="Output directory."
     )
     parser.add_argument(
         "--traffic_df_filename",
         type=str,
-        default="data/metr-la.h5",
+        default="preprocess/normalized_file.h5",
         help="Raw traffic readings.",
     )
     parser.add_argument(

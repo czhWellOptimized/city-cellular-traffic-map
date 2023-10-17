@@ -77,24 +77,30 @@ class SplitFedNodePredictorClient(nn.Module):
                     x, y, x_attr, y_attr, server_graph_encoding = batch # B 1 L H  ，应该修改成 B Ni L H 
                     # after : Sequence_length（batch_size） x 1 x gru_num_layers x hidden_size ，但是由于分batch了，所以sequence_length 此时变成batch_size
                     server_graph_encoding = server_graph_encoding.permute(1, 0, 2, 3) # 1 x batch_size x gru_num_layers x hidden_size
+                    logging.warning(str(server_graph_encoding))
                     x = x.to(self.device) if (x is not None) else None
                     y = y.to(self.device) if (y is not None) else None
                     x_attr = x_attr.to(self.device) if (x_attr is not None) else None
                     y_attr = y_attr.to(self.device) if (y_attr is not None) else None
                     server_graph_encoding = server_graph_encoding.to(self.device)
+                    
                     data = dict(
                         x=x, x_attr=x_attr, y=y, y_attr=y_attr
                     )
                     y_pred = self(data, server_graph_encoding) # 调用 forward(self, x, server_graph_encoding)  B x T x Ni x output_size
+                    # logging.warning(str(y_pred.device))
+                    # logging.warning(str(y.device))
+                    
                     loss = nn.MSELoss()(y_pred, y) # B x T x Ni x output_size 
+                    logging.warning("train,  y:  ,y_pred:   ,loss: %s", str(loss))
                     self.optimizer.zero_grad()
                     loss.backward()
                     self.optimizer.step()
-                    num_samples += x.shape[0]
+                    num_samples += x.shape[0] * x.shape[2]
                     metrics = unscaled_metrics(y_pred, y, self.feature_scaler, 'train')
-                    epoch_log['train/loss'] += loss.detach() * x.shape[0]
+                    epoch_log['train/loss'] += loss.detach() * x.shape[0] * x.shape[2]
                     for k in metrics:
-                        epoch_log[k] += metrics[k] * x.shape[0]
+                        epoch_log[k] += metrics[k] * x.shape[0] * x.shape[2]
                     self.global_step += 1
                 for k in epoch_log:
                     epoch_log[k] /= num_samples
@@ -117,23 +123,25 @@ class SplitFedNodePredictorClient(nn.Module):
             num_samples = 0
             epoch_log = defaultdict(lambda : 0.0)
             for batch in dataloader:
-                x, y, x_attr, y_attr, server_graph_encoding = batch
+                x, y, x_attr, y_attr, server_graph_encoding = batch # x : B T N F 
                 server_graph_encoding = server_graph_encoding.permute(1, 0, 2, 3)
                 x = x.to(self.device) if (x is not None) else None
                 y = y.to(self.device) if (y is not None) else None
                 x_attr = x_attr.to(self.device) if (x_attr is not None) else None
                 y_attr = y_attr.to(self.device) if (y_attr is not None) else None
                 server_graph_encoding = server_graph_encoding.to(self.device)
+                logging.warning(str(server_graph_encoding))
                 data = dict(
                     x=x, x_attr=x_attr, y=y, y_attr=y_attr
                 )
                 y_pred = self(data, server_graph_encoding)
                 loss = nn.MSELoss()(y_pred, y)
-                num_samples += x.shape[0]
+                logging.warning("eval,  y:  ,y_pred:   ,loss: %s", str(loss))
+                num_samples += x.shape[0] * x.shape[2]
                 metrics = unscaled_metrics(y_pred, y, self.feature_scaler, name)
-                epoch_log['{}/loss'.format(name)] += loss.detach() * x.shape[0]
+                epoch_log['{}/loss'.format(name)] += loss.detach() * x.shape[0] * x.shape[2]
                 for k in metrics:
-                    epoch_log[k] += metrics[k] * x.shape[0]
+                    epoch_log[k] += metrics[k] * x.shape[0] * x.shape[2]
             for k in epoch_log:
                 epoch_log[k] /= num_samples
                 epoch_log[k] = epoch_log[k].cpu()
@@ -217,12 +225,94 @@ class SplitFedNodePredictor(LightningModule):
         parser.add_argument('--server_epoch', type=int, default=5)
         parser.add_argument('--mp_worker_num', type=int, default=8)
         parser.add_argument('--server_gn_layer_num', type=int, default=2)
+        parser.add_argument('--clusters',type=int,default=20)
         return parser
 
     def prepare_data(self):
         pass
+    
+    def get_clusters(self):
+        import pandas as pd
+        from sklearn.cluster import KMeans
+        from scipy.spatial import distance
+        import matplotlib.pyplot as plt
+        import os
+        import pandas as pd
+        import numpy as np
+        from sklearn.metrics.pairwise import haversine_distances
+        from math import radians
+        import os
+        from torch_geometric.utils import dense_to_sparse
 
+        current_directory = os.getcwd()
+        # 读取数据
+        df = pd.read_csv(current_directory + '/preprocess/valid_topology.csv')
+        # df_data = pd.read_csv(current_directory + '/normalized_file.csv', index_col=0)
+        # df_data.columns = df_data.columns.astype(int)
+        # print(df_data)
+        # print(df_data[[617,626]])
+        clusters = self.hparams.clusters
+        print("cluster:",clusters)
+        # 使用KMeans进行聚类
+        kmeans = KMeans(n_clusters=clusters, random_state=0,n_init='auto').fit(df[['lon', 'lat']])
+        # 将聚类标签添加到数据框中
+        df['cluster'] = kmeans.labels_
+            
+        client_idx_list = []
+        adj_list = []
+        
+        # 打印每个类的基站id和中心基站的id
+        count =0
+        for i in range(clusters):
+            print(f"Cluster {i}:")
+            cluster_df = df[df['cluster']==i]
+            bs_ids = cluster_df['bs'].tolist() # 得到该类中的所有bs id
+            # 使用a中的索引从df中提取所需的基站经纬度
+            a = cluster_df.index
+            # print("a:",a)
+            df_tmp = df.iloc[a]
+            # 将经纬度转换为弧度
+            df_tmp.loc[:, ['lon', 'lat']] = np.radians(df_tmp[['lon', 'lat']])
+            # 计算haversine距离
+            distances = haversine_distances(df_tmp[['lat', 'lon']], df_tmp[['lat', 'lon']]) * 6371000
+
+            # 创建邻接矩阵
+            distances_matrix = pd.DataFrame(distances, index=df_tmp['bs'], columns=df_tmp['bs'])
+            distances_matrix_np = distances_matrix.values
+            # 邻接矩阵单位是米
+            # print(distances_matrix_np,end='\n\n')
+
+            normalized_k = 0.1
+            distances = distances_matrix_np[~np.isinf(distances_matrix_np)].flatten()
+            std = distances.std() + 1e-6 # 防止单个基站，出现除0的情况
+            adj_mx = np.exp(-np.square(distances_matrix / std))
+            # Make the adjacent matrix symmetric by taking the max.
+            # adj_mx = np.maximum.reduce([adj_mx, adj_mx.T])
+            # Sets entries that lower than a threshold, i.e., k, to zero for sparsity.
+            # 这行代码将邻接矩阵中所有小于阈值normalized_k的元素设置为零。这样可以增加邻接矩阵的稀疏性，也就是说，只有那些距离较大（即原始距离矩阵中的值较大）的基站之间才会有连接。
+            adj_mx[adj_mx < normalized_k] = 0
+            # print("adj_mx.shape:",adj_mx.shape)
+            # print(type(adj_mx))
+            print("Base stations len:", len(bs_ids))
+            print("Base stations :", bs_ids)
+            tmp = list(cluster_df.index)
+            count += len(tmp)
+            # print("sb,",type(tmp),list(tmp))
+            client_idx_list.append(tmp)
+            # print(adj_mx)
+            my_array = np.array(adj_mx)
+            my_tensor = torch.from_numpy(my_array).float()
+            print("adj_mx_ts.shape:",my_tensor.shape)
+            # print(my_tensor)
+            adj_list.append(dense_to_sparse(my_tensor))
+            # missing_bs_ids = [bs_id for bs_id in bs_ids if bs_id not in df_data.columns]
+            # print('Missing base station IDs:', missing_bs_ids)
+        logging.warning(count)
+        return client_idx_list,adj_list
+        
     def setup(self, stage):
+        import sys
+        
         # must avoid repeated init!!! otherwise loaded model weights will be re-initialized!!!
         if self.base_model is not None:
             return
@@ -235,16 +325,24 @@ class SplitFedNodePredictor(LightningModule):
         input_size = self.data['train']['x'].shape[-1] + self.data['train']['x_attr'].shape[-1] # 2
         output_size = self.data['train']['y'].shape[-1] # 1
         client_params_list = []
+        
+        client_idx_list,adj_list = self.get_clusters()
+        num_clients = len(client_idx_list)
+        # sys.exit()
+        client=[]
+        for x in client_idx_list:
+            client.append(torch.tensor(x))
         # B x T x N x F 
         for client_i in range(num_clients):
             client_datasets = {}
             for name in ['train', 'val', 'test']:
-                client_datasets[name] = TensorDataset( # B T N F
-                    data[name]['x'][:, :, client_i:client_i+1, :],
-                    data[name]['y'][:, :, client_i:client_i+1, :],
-                    data[name]['x_attr'][:, :, client_i:client_i+1, :],
-                    data[name]['y_attr'][:, :, client_i:client_i+1, :],
-                    torch.zeros(1, data[name]['x'].shape[0], self.hparams.gru_num_layers, self.hparams.hidden_size).float().permute(1, 0, 2, 3) # default_server_graph_encoding
+                # print("shape:",torch.index_select(data[name]['x'],2,client[client_i]).shape)
+                client_datasets[name] = TensorDataset( # B T Ni F
+                    torch.index_select(data[name]['x'],2,client[client_i]),
+                    torch.index_select(data[name]['y'],2,client[client_i]),
+                    torch.index_select(data[name]['x_attr'],2,client[client_i]),
+                    torch.index_select(data[name]['y_attr'],2,client[client_i]),
+                    torch.zeros(len(client[client_i]), data[name]['x'].shape[0], self.hparams.gru_num_layers, self.hparams.hidden_size).float().permute(1, 0, 2, 3) # default_server_graph_encoding
                     # after : B x 1 x gru_num_layers x hidden_size ，需要改成 B Ni L H
                 )
             client_params = {}
@@ -257,11 +355,15 @@ class SplitFedNodePredictor(LightningModule):
                 input_size=input_size,
                 output_size=output_size,
                 start_global_step=0,
+                own_bs_index = client[client_i],
+                own_adj = adj_list[client_i],
                 **self.hparams
             )
             client_params_list.append(client_params)
+            # print("client length: ",client_params['own_bs_index']) 
+            # print("client length: ",len(client_params['own_bs_index']))
         self.client_params_list = client_params_list
-
+        print("client para list size:",len(self.client_params_list)) # 20 
         self.base_model = getattr(base_models, self.hparams.base_model_name)(input_size=input_size, output_size=output_size, **self.hparams)
         self.gcn = GraphNet(
             node_input_size=self.hparams.hidden_size,
@@ -310,60 +412,78 @@ class SplitFedNodePredictor(LightningModule):
                         train_mask = self.data['train']['selected'].flatten()
                         x, y, x_attr, y_attr = x[:, :, train_mask, :], y[:, :, train_mask, :], x_attr[:, :, train_mask, :], y_attr[:, :, train_mask, :]
 
-                    data = dict(
-                        x=x, x_attr=x_attr, y=y, y_attr=y_attr
-                    )
-                    h_encode = self.base_model.forward_encoder(data) # Layer x (B x N) x hidden_size ，此处N=全部节点
-                    batch_num, node_num = data['x'].shape[0], data['x'].shape[2]  # B , N
-                    # logging.warning({'batch_num': batch_num, 'node_num': node_num})  {'batch_num': 48, 'node_num': 207}
-                    #                                     layer          B         N            hidden_size
-                    graph_encoding = h_encode.view(h_encode.shape[0], batch_num, node_num, h_encode.shape[2]).permute(2, 1, 0, 3) # N x B x L x hidden_size
-                    # N : node_num
-                    # B : batch_num
-                    # L : num_layers = 1
-                    # hidden_size : 特征此处为 64
-                    # logging.warning('graph_encoding : %s',str(graph_encoding.shape)) torch.Size([207, 48, 1, 64])
-                    graph_encoding = self.gcn(
-                        Data(x=graph_encoding, 
-                        edge_index=self.data['train']['edge_index'].to(graph_encoding.device), 
-                        edge_attr=self.data['train']['edge_attr'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(graph_encoding.device)) # edge,1,1,1
-                    ) # N x B x L x node_output_size
-                    if epoch_i == self.hparams.server_epoch:
-                        updated_graph_encoding.append(graph_encoding.detach().clone().cpu())
-                    else:
-                        y_pred = self.base_model.forward_decoder(
-                            data, h_encode, batches_seen=global_step, return_encoding=False, server_graph_encoding=graph_encoding
-                        ) # B x T x N x output_size
-                        loss = nn.MSELoss()(y_pred, y)
-                        self.server_optimizer.zero_grad()
-                        loss.backward()
-                        self.server_optimizer.step()
-                        global_step += 1
+                    for i,c in enumerate(self.client_params_list): # 每个client分别进行 GNN 处理    
+                        tmp = c['own_bs_index'].to(device)
+                        data = dict(
+                            x=torch.index_select(x,2,tmp).to(device), 
+                            x_attr=torch.index_select(x_attr,2,tmp).to(device),
+                            y=torch.index_select(y,2,tmp).to(device), 
+                            y_attr=torch.index_select(y_attr,2,tmp).to(device)
+                        )
+                        
+                        h_encode = self.base_model.forward_encoder(data) # Layer x (B x N) x hidden_size ，此处N=全部节点
+                        batch_num, node_num = data['x'].shape[0], data['x'].shape[2]  # B , N
+                        
+                        graph_encoding = h_encode.view(h_encode.shape[0], batch_num, node_num, h_encode.shape[2]).permute(2, 1, 0, 3) # N x B x L x hidden_size
+                        
+                        
+                        # logging.warning('train before graph_encoding : %s',str(graph_encoding)) # torch.Size([3, 36, 1, 64])
+                        # logging.warning('train edgeindex : %s',str(c['own_adj'][0])) # torch.Size([3, 36, 1, 64])
+                        # logging.warning('train edge_attr : %s',str(c['own_adj'][1])) # torch.Size([3, 36, 1, 64])
+                        # N : node_num
+                        # B : batch_num
+                        # L : num_layers = 1
+                        # hidden_size : 特征此处为 64
+                        # logging.warning('graph_encoding : %s',str(graph_encoding.shape)) torch.Size([207, 48, 1, 64])
+                        graph_encoding = self.gcn(
+                            Data(x=graph_encoding, 
+                            edge_index = c['own_adj'][0].to(graph_encoding.device),
+                            edge_attr=c['own_adj'][1].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(graph_encoding.device))
+                        ) # Ni x B x L x F
+                        
+                        if torch.isnan(graph_encoding).any():
+                            logging.warning("train after graph_encoding is nan: %s",str(graph_encoding)) # torch.Size([195, 36, 1, 64]) 
+                        
+                        if epoch_i == self.hparams.server_epoch:
+                            # update server_graph_encoding
+                            # c.update(train_dataset=TensorDataset(
+                            #     torch.index_select(self.data['train']['x'],2,c['own_bs_index']),
+                            #     torch.index_select(self.data['train']['y'],2,c['own_bs_index']),
+                            #     torch.index_select(self.data['train']['x_attr'],2,c['own_bs_index']),
+                            #     torch.index_select(self.data['train']['y_attr'],2,c['own_bs_index']),
+                            #     graph_encoding.permute(1, 0, 2, 3) # B x 1 x L x hidden
+                            # ))
+                            name = 'train'
+                            keyname = '{}_dataset'.format(name)
+                            c.update({
+                                keyname: TensorDataset(
+                                    torch.index_select(self.data[name]['x'],2,c['own_bs_index']),
+                                    torch.index_select(self.data[name]['y'],2,c['own_bs_index']),
+                                    torch.index_select(self.data[name]['x_attr'],2,c['own_bs_index']),
+                                    torch.index_select(self.data[name]['y_attr'],2,c['own_bs_index']),
+                                    graph_encoding.detach().clone().cpu().permute(1, 0, 2, 3)
+                                )
+                            })
+                        else:
+                            y_pred = self.base_model.forward_decoder(
+                                data, h_encode, batches_seen=global_step, return_encoding=False, server_graph_encoding=graph_encoding
+                            ) # B x T x N x output_size
+                            
+                            loss = nn.MSELoss()(y_pred, data['y'])
+                            self.server_optimizer.zero_grad()
+                            loss.backward()
+                            self.server_optimizer.step()
+                            global_step += 1
         # update global step for all clients
         for client_params in self.client_params_list:
             client_params.update(start_global_step=global_step)
-        # update server_graph_encoding
-        updated_graph_encoding = torch.cat(updated_graph_encoding, dim=1) # N x B x L x node_output_size(hidden_size)
-        sel_client_i = 0
-        for client_i, client_params in enumerate(self.client_params_list):
-            if 'selected' in self.data['train']:
-                if self.data['train']['selected'][client_i, 0].item() is False:
-                    continue
-            client_params.update(train_dataset=TensorDataset(
-                self.data['train']['x'][:, :, client_i:client_i+1, :],
-                self.data['train']['y'][:, :, client_i:client_i+1, :],
-                self.data['train']['x_attr'][:, :, client_i:client_i+1, :],
-                self.data['train']['y_attr'][:, :, client_i:client_i+1, :],
-                updated_graph_encoding[sel_client_i:sel_client_i+1, :, :, :].permute(1, 0, 2, 3) # B x 1 x L x hidden
-            ))
-            sel_client_i += 1
 
     def _eval_server_gcn_with_agg_clients(self, name, device):
         assert name in ['val', 'test']
         self.base_model.to(device)
         self.gcn.to(device)
         server_dataloader = DataLoader(self.server_datasets[name], batch_size=self.hparams.server_batch_size, shuffle=False)
-        updated_graph_encoding = []
+        
         with torch.no_grad():
             self.base_model.eval()
             self.gcn.eval()
@@ -373,36 +493,47 @@ class SplitFedNodePredictor(LightningModule):
                 y = y.to(device) if (y is not None) else None
                 x_attr = x_attr.to(device) if (x_attr is not None) else None
                 y_attr = y_attr.to(device) if (y_attr is not None) else None
-                data = dict(
-                    x=x, x_attr=x_attr, y=y, y_attr=y_attr
-                )
-                h_encode = self.base_model.forward_encoder(data) # Layer x (B x N) x hidden_size
-                batch_num, node_num = data['x'].shape[0], data['x'].shape[2] # server_batch_size 48 , 207
-                graph_encoding = h_encode.view(h_encode.shape[0], batch_num, node_num, h_encode.shape[2]).permute(2, 1, 0, 3) # N x B x L x hidden_size
-                # N : node_num    207
-                # B : batch_num   48 
-                # L :   1     num_layers
-                # hidden_size : 特征此处为64 hidden_size
-                logging.warning('graph_encoding : %s',str(graph_encoding.shape)) # torch.Size([2617, 36, 1, 64])
-                graph_encoding = self.gcn(
-                    Data(x=graph_encoding, 
-                    edge_index=self.data[name]['edge_index'].to(graph_encoding.device), 
-                    edge_attr=self.data[name]['edge_attr'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(graph_encoding.device))
-                ) # N x B x L x F
-                updated_graph_encoding.append(graph_encoding.detach().clone().cpu())
-        # update server_graph_encoding
-        updated_graph_encoding = torch.cat(updated_graph_encoding, dim=1) # N x B(23974) x L x F
-        for client_i, client_params in enumerate(self.client_params_list):
-            keyname = '{}_dataset'.format(name)
-            client_params.update({
-                keyname: TensorDataset(
-                    self.data[name]['x'][:, :, client_i:client_i+1, :],
-                    self.data[name]['y'][:, :, client_i:client_i+1, :],
-                    self.data[name]['x_attr'][:, :, client_i:client_i+1, :],
-                    self.data[name]['y_attr'][:, :, client_i:client_i+1, :],
-                    updated_graph_encoding[client_i:client_i+1, :, :, :].permute(1, 0, 2, 3) # B x N x L x F   #  23974 x 1 x 1 x 64 -> 23974 x 207 x 1 x 64
-                )
-            })
+                
+                
+                for i,c in enumerate(self.client_params_list): # 每个client分别进行 GNN 处理
+                    tmp = c['own_bs_index'].to(device)
+                    data = dict(
+                        x=torch.index_select(x,2,tmp).to(device), 
+                        x_attr=torch.index_select(x_attr,2,tmp).to(device),
+                        y=torch.index_select(y,2,tmp).to(device), 
+                        y_attr=torch.index_select(y_attr,2,tmp).to(device)
+                    )
+                    logging.warning("eval:x.shape:!!!!! %s ",str(data['x'].shape)) # B T N F
+                    
+                    h_encode = self.base_model.forward_encoder(data) # Layer x (Bi x N) x hidden_size
+                    batch_num, node_num = data['x'].shape[0], data['x'].shape[2] # server_batch_size 48 。195, 236, 78, 263, 33, 223, 42
+                    graph_encoding = h_encode.view(h_encode.shape[0], batch_num, node_num, h_encode.shape[2]).permute(2, 1, 0, 3) # Ni x B x L x hidden_size
+                    # N : node_num    207
+                    # B : batch_num   48 
+                    # L :   1     num_layers
+                    # hidden_size : 特征此处为64 hidden_size
+                    # logging.warning('eval before graph_encoding : %s',str(graph_encoding)) # torch.Size([3, 36, 1, 64])
+                    # logging.warning('evaledgeindex : %s',str(c['own_adj'][0])) # torch.Size([3, 36, 1, 64])
+                    # logging.warning('eval edge_attr : %s',str(c['own_adj'][1])) # torch.Size([3, 36, 1, 64])
+                    graph_encoding = self.gcn(
+                        Data(x=graph_encoding, 
+                        edge_index = c['own_adj'][0].to(graph_encoding.device),
+                        edge_attr=c['own_adj'][1].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).to(graph_encoding.device))
+                    ) # Ni x B x L x F
+                    if torch.isnan(graph_encoding).any():
+                       logging.warning("eval after graph_encoding is nan: %s",str(graph_encoding)) # torch.Size([195, 36, 1, 64])     
+                    
+                    
+                    keyname = '{}_dataset'.format(name)
+                    c.update({
+                        keyname: TensorDataset(
+                            torch.index_select(self.data[name]['x'],2,c['own_bs_index']),
+                            torch.index_select(self.data[name]['y'],2,c['own_bs_index']),
+                            torch.index_select(self.data[name]['x_attr'],2,c['own_bs_index']),
+                            torch.index_select(self.data[name]['y_attr'],2,c['own_bs_index']),
+                            graph_encoding.detach().clone().cpu().permute(1, 0, 2, 3)
+                        )
+                    })
 
     def train_dataloader(self):
         # return a fake dataloader for running the loop
@@ -466,7 +597,9 @@ class SplitFedNodePredictor(LightningModule):
         # run decoding on all clients, run backward on all clients
         # run backward on server-side GNN and optimize GNN
         # TODO: 4. run forward on updated GNN to renew server_graph_encoding
+        logging.warning("client process success !")
         self._train_server_gcn_with_agg_clients(server_device)
+        logging.warning("server gcn process success !")
         agg_log = agg_local_train_results['log']
         log = agg_log
         self.train_step_outputs.append({'loss': torch.tensor(0).float(), 'progress_bar': log, 'log': log})

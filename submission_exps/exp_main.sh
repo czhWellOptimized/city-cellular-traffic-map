@@ -28,9 +28,9 @@ nohup python main.py --dataset METR-LA --seed 42 --model_name FixedGraphFedMTLNo
 python main.py --dataset METR-LA --seed 42 --model_name FixedGraphFedMTLNodePredictor --base_model_name GRUSeq2Seq --batch_size 256 --hidden_size 200 --gru_num_layers 2 --use_curriculum_learning --mp_worker_num 8 --mtl_lambda 0.01 --sync_every_n_epoch 5
 
 # CNFGNN (64K + 1M)
-nohup python main.py --dataset METR-LA --seed 42 --model_name SplitFedAvgNodePredictor --base_model_name GRUSeq2SeqWithGraphNet --batch_size 128 --server_batch_size 48 --hidden_size 64 --suffix mp --use_curriculum_learning --mp_worker_num 1 --sync_every_n_epoch 1 --server_epoch 1 --gcn_on_server  --early_stop_patience 20 --gru_num_layers 1 --max_epochs 1 > log/SplitFedAvgNodePredictor.log 2>&1 &
+nohup python main.py --dataset METR-LA --seed 42 --model_name SplitFedAvgNodePredictor --base_model_name GRUSeq2SeqWithGraphNet --batch_size 128 --server_batch_size 128 --hidden_size 64 --suffix mp --use_curriculum_learning --mp_worker_num 1 --sync_every_n_epoch 1 --server_epoch 1 --gcn_on_server  --early_stop_patience 20 --gru_num_layers 1 --max_epochs 1 > log/SplitFedAvgNodePredictor.log 2>&1 &
 
-
+nohup python main.py --dataset METR-LA --seed 42 --model_name SplitFedAvgNodePredictor --base_model_name GRUSeq2SeqWithGraphNet --batch_size 128 --server_batch_size 128 --hidden_size 64 --suffix mp --use_curriculum_learning --mp_worker_num 1 --sync_every_n_epoch 1 --gcn_on_server  --early_stop_patience 20 --gru_num_layers 1 --max_epochs 2 --clusters 80 --server_epoch 1 > log/SplitFedAvgNodePredictor.log 2>&1 &
 
 # PEMS-BAY
 

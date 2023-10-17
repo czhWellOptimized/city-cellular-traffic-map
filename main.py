@@ -59,11 +59,14 @@ if __name__ == '__main__':
     parser.add_argument('--early_stop_patience', type=int, default=50)
     parser.add_argument('--max_epochs', type=int, default=1)
 
+
     temp_args, _ = parser.parse_known_args()
+    
     ModelClass = getattr(models, temp_args.model_name)
+    parser = ModelClass.add_model_specific_args(parser)
+    
     BaseModelClass = getattr(models, temp_args.base_model_name, None)
     PropModelClass = getattr(models, temp_args.prop_model_name, None)
-    parser = ModelClass.add_model_specific_args(parser)
     if BaseModelClass is not None:
         parser = BaseModelClass.add_model_specific_args(parser)
     if PropModelClass is not None:
