@@ -424,7 +424,7 @@ class FedMTLNodePredictor(LightningModule):
         
         
         self.log('czh_all_client_train_loss', log['train/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_train_mse', log['train/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_train_rmse', log['train/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_train_mae', log['train/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_train_mape', log['train/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True)   
         
@@ -494,7 +494,7 @@ class FedMTLNodePredictor(LightningModule):
         self.validation_step_outputs.append({'progress_bar': log, 'log': log})
         
         self.log('czh_all_client_validation_loss', log['val/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_validation_mse', log['val/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_rmse', log['val/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_validation_mae', log['val/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_validation_mape', log['val/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True)
         
@@ -535,7 +535,7 @@ class FedMTLNodePredictor(LightningModule):
         self.test_step_outputs.append({'progress_bar': log, 'log': log})
         
         self.log('czh_all_client_test_loss', log['test/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_test_mse', log['test/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_rmse', log['test/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_test_mae', log['test/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_test_mape', log['test/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         

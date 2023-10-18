@@ -23,14 +23,14 @@ def unscaled_metrics(y_pred, y, scaler, name):
     # mse
     mse = ((y_pred - y) ** 2).mean()
     # RMSE
-    # rmse = torch.sqrt(mse)
+    rmse = torch.sqrt(mse)
     # MAE
     mae = torch.abs(y_pred - y).mean()
     # MAPE
     mape = torch.abs((y_pred - y) / y).mean()
     return {
+        '{}/rmse'.format(name): rmse.detach(),
         '{}/mse'.format(name): mse.detach(),
-        # '{}/rmse'.format(name): rmse.detach(),
         '{}/mae'.format(name): mae.detach(),
         '{}/mape'.format(name): mape.detach()
     }
@@ -170,12 +170,12 @@ class NodePredictor(LightningModule):
         y_pred = self(data)
         loss = nn.MSELoss()(y_pred, y)
 
-        log = {'train/loss': loss, 'num': y_pred.shape[0]}
+        log = {'train/loss': loss, 'num': y_pred.shape[0] * y_pred.shape[2]}
         log.update(**unscaled_metrics(y_pred, y, self.data['feature_scaler'], 'train'))
         self.train_step_outputs.append({'loss': loss, 'progress_bar': log, 'log': log})
         
         self.log('czh_all_client_train_loss', log['train/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_train_mse', log['train/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_train_rmse', log['train/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_train_mae', log['train/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_train_mape', log['train/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         
@@ -220,12 +220,12 @@ class NodePredictor(LightningModule):
         y_pred = self(data)
         loss = nn.MSELoss()(y_pred, y)
         
-        log = {'val/loss': loss, 'num': y_pred.shape[0]}
+        log = {'val/loss': loss, 'num': y_pred.shape[0] * y_pred.shape[2]}
         log.update(**unscaled_metrics(y_pred, y, self.data['feature_scaler'], 'val'))
         self.validation_step_outputs.append({'loss': loss, 'progress_bar': log, 'log': log})
         
         self.log('czh_all_client_validation_loss', log['val/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_validation_mse', log['val/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_validation_rmse', log['val/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_validation_mae', log['val/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_validation_mape', log['val/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         
@@ -269,12 +269,12 @@ class NodePredictor(LightningModule):
         y_pred = self(data)
         loss = nn.MSELoss()(y_pred, y)
 
-        log = {'test/loss': loss, 'num': y_pred.shape[0]}
+        log = {'test/loss': loss, 'num': y_pred.shape[0]* y_pred.shape[2]}
         log.update(**unscaled_metrics(y_pred, y, self.data['feature_scaler'], 'test'))
         self.test_step_outputs.append({'loss': loss, 'progress_bar': log, 'log': log})
         
         self.log('czh_all_client_test_loss', log['test/loss'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
-        self.log('czh_all_client_test_mse', log['test/mse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
+        self.log('czh_all_client_test_rmse', log['test/rmse'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_test_mae', log['test/mae'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         self.log('czh_all_client_test_mape', log['test/mape'], on_step=True, on_epoch=True, prog_bar=True, logger=True ,sync_dist=True) 
         

@@ -15,7 +15,7 @@ import logging # 这个是通用的python log库，和pytorch无关
 def main(args):
     torch.set_float32_matmul_precision('medium')
     seed_everything(args.seed)  # Global seed set to
-    tb_logger = TensorBoardLogger(save_dir="tb_logs/", name = args.model_name + args.base_model_name) # 对不同的model分文件夹存储
+    tb_logger = TensorBoardLogger(save_dir="tb_logs/", name = args.model_name + "_" +args.base_model_name + "_" + args.tb_logs_info) # 对不同的model分文件夹存储
 
     trainer = Trainer(
         default_root_dir='artifacts', # 如果存在logger，就使用logger中的路径
@@ -58,6 +58,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--early_stop_patience', type=int, default=50)
     parser.add_argument('--max_epochs', type=int, default=1)
+    parser.add_argument('--tb_logs_info', type=str, default='')
 
 
     temp_args, _ = parser.parse_known_args()
